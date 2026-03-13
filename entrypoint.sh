@@ -6,6 +6,8 @@ export POSTGRES_USER="${POSTGRES_USER:-video_checker}"
 export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-video_checker}"
 export POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 export POSTGRES_HOST="127.0.0.1"
+export PUID="${PUID:-1000}"
+export PGID="${PGID:-1000}"
 
 PGDATA_DIR="/config/postgres"
 mkdir -p "$PGDATA_DIR"
@@ -19,16 +21,43 @@ fi
 INITDB="$PG_BIN_DIR/initdb"
 PG_CTL="$PG_BIN_DIR/pg_ctl"
 
-if [ ! -s "$PGDATA_DIR/PG_VERSION" ]; then
-  su - postgres -c "$INITDB -D '$PGDATA_DIR'"
-  echo "host all all 127.0.0.1/32 md5" >> "$PGDATA_DIR/pg_hba.conf"
-  su - postgres -c "$PG_CTL -D '$PGDATA_DIR' -o \"-c listen_addresses='127.0.0.1' -p $POSTGRES_PORT\" -w start"
-  su - postgres -c "psql -h 127.0.0.1 -p $POSTGRES_PORT -d postgres -c \"ALTER USER postgres WITH PASSWORD '$POSTGRES_PASSWORD';\""
-  su - postgres -c "psql -h 127.0.0.1 -p $POSTGRES_PORT -d postgres -c \"CREATE USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';\" || true"
-  su - postgres -c "psql -h 127.0.0.1 -p $POSTGRES_PORT -d postgres -c \"CREATE DATABASE $POSTGRES_DB OWNER $POSTGRES_USER;\" || true"
-  su - postgres -c "$PG_CTL -D '$PGDATA_DIR' -m fast -w stop"
+if getent group "$PGID" >/dev/null 2>&1; then
+  RUNTIME_GROUP="$(getent group "$PGID" | cut -d: -f1)"
+else
+  RUNTIME_GROUP="appgroup"
+  groupadd -g "$PGID" "$RUNTIME_GROUP"
 fi
 
-su - postgres -c "$PG_CTL -D '$PGDATA_DIR' -o \"-c listen_addresses='127.0.0.1' -p $POSTGRES_PORT\" -w start"
+if getent passwd "$PUID" >/dev/null 2>&1; then
+  RUNTIME_USER="$(getent passwd "$PUID" | cut -d: -f1)"
+else
+  RUNTIME_USER="appuser"
+  useradd -m -u "$PUID" -g "$PGID" -s /bin/sh "$RUNTIME_USER"
+fi
 
-exec uvicorn app.main:app --host 0.0.0.0 --port "${WEB_PORT:-8080}"
+chown -R "$PUID:$PGID" "$PGDATA_DIR" 2>/dev/null || true
+
+run_as_runtime_user() {
+  su -s /bin/sh -c "$1" "$RUNTIME_USER"
+}
+
+PG_SERVER_OPTS="-c listen_addresses='127.0.0.1' -p $POSTGRES_PORT -c unix_socket_directories='/tmp'"
+
+if [ ! -s "$PGDATA_DIR/PG_VERSION" ]; then
+  PWFILE="/tmp/postgres_pwfile.txt"
+  printf '%s' "$POSTGRES_PASSWORD" > "$PWFILE"
+  chmod 600 "$PWFILE"
+
+  run_as_runtime_user "$INITDB -D '$PGDATA_DIR' -U '$POSTGRES_USER' --pwfile='$PWFILE'"
+  rm -f "$PWFILE"
+
+  echo "host all all 127.0.0.1/32 md5" >> "$PGDATA_DIR/pg_hba.conf"
+
+  run_as_runtime_user "$PG_CTL -D '$PGDATA_DIR' -o \"$PG_SERVER_OPTS\" -w start"
+  run_as_runtime_user "psql -h 127.0.0.1 -p $POSTGRES_PORT -U '$POSTGRES_USER' -d postgres -c \"CREATE DATABASE $POSTGRES_DB OWNER $POSTGRES_USER;\" || true"
+  run_as_runtime_user "$PG_CTL -D '$PGDATA_DIR' -m fast -w stop"
+fi
+
+run_as_runtime_user "$PG_CTL -D '$PGDATA_DIR' -o \"$PG_SERVER_OPTS\" -w start"
+
+exec su -s /bin/sh -c "uvicorn app.main:app --host 0.0.0.0 --port '${WEB_PORT:-8080}'" "$RUNTIME_USER"
