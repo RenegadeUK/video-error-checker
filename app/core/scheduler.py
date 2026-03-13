@@ -3,8 +3,11 @@ import threading
 from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy import func
 
+from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.models import ScanResult
 from app.core.scanner import run_full_scan
 
 
@@ -20,6 +23,7 @@ class ScanState:
         self.current_file: str = ""
         self.current_target: str = ""
         self.recent_logs: list[dict[str, str]] = []
+        self.persisted_results_count: int = 0
 
 
 scan_state = ScanState()
@@ -74,6 +78,12 @@ def _run_scan_job() -> None:
             )
         with scan_state.lock:
             scan_state.last_summary = summary
+
+        with SessionLocal() as session:
+            persisted_count = int(session.query(func.count(ScanResult.id)).scalar() or 0)
+        with scan_state.lock:
+            scan_state.persisted_results_count = persisted_count
+        _append_log("info", f"DB persisted rows: {persisted_count}")
     except Exception as exc:
         _append_log("error", f"Scan failed: {exc}")
     finally:
@@ -138,4 +148,6 @@ def get_scan_status() -> dict:
             "current_file": scan_state.current_file,
             "current_target": scan_state.current_target,
             "recent_logs": scan_state.recent_logs,
+            "persisted_results_count": scan_state.persisted_results_count,
+            "db_target": f"{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}",
         }

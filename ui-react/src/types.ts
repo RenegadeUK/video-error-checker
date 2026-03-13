@@ -39,4 +39,6 @@ export type ScanStatus = {
   current_file: string;
   current_target: string;
   recent_logs: ScanLogEntry[];
+  persisted_results_count: number;
+  db_target: string;
 };

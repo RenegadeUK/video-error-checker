@@ -22,6 +22,8 @@ const DEFAULT_SCAN_STATUS: ScanStatus = {
   current_file: "",
   current_target: "",
   recent_logs: [],
+  persisted_results_count: 0,
+  db_target: "",
 };
 
 function formatDate(value: string | null): string {
@@ -232,6 +234,9 @@ export default function App() {
             <h3>Live Scan Activity</h3>
             <span>{scanStatus.running ? "Live" : "Last run"}</span>
           </div>
+          <p className="scan-db-meta">
+            DB: {scanStatus.db_target || "unknown"} • Persisted rows: {scanStatus.persisted_results_count}
+          </p>
           <div className="scan-log-list">
             {recentLogs.map((entry, index) => (
               <div className="scan-log-row" key={`${entry.timestamp}-${index}`}>
@@ -275,6 +280,9 @@ export default function App() {
           <div className="card">
             <h3>Total Scanned Files</h3>
             <p>{totalScanned}</p>
+            {scanStatus.persisted_results_count > totalScanned ? (
+              <p className="message">Live DB rows: {scanStatus.persisted_results_count}</p>
+            ) : null}
           </div>
           <div className="card">
             <h3>Total Errors</h3>

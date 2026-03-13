@@ -52,6 +52,12 @@ body {
   overflow: auto;
 }
 
+.scan-db-meta {
+  margin: 0 0 8px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
 .scan-log-row {
   display: grid;
   grid-template-columns: 180px 64px 1fr;
