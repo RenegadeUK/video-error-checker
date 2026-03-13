@@ -28,4 +28,8 @@ export type ScanStatus = {
   last_started: string | null;
   last_completed: string | null;
   last_summary: Record<string, number>;
+  files_total: number;
+  files_done: number;
+  current_file: string;
+  current_target: string;
 };

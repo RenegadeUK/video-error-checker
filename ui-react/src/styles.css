@@ -22,6 +22,38 @@ body {
   gap: 12px;
 }
 
+.scan-progress {
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.scan-progress-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.scan-progress-file {
+  margin: 8px 0 0;
+  color: #93c5fd;
+  overflow-wrap: anywhere;
+}
+
+.progress-track {
+  height: 10px;
+  width: 100%;
+  border-radius: 999px;
+  background: #1f2937;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #2563eb;
+  transition: width 0.2s linear;
+}
+
 .tabs {
   display: flex;
   gap: 8px;
@@ -68,6 +100,25 @@ button.active {
 .row-actions {
   display: flex;
   gap: 8px;
+}
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checkbox input {
+  width: 16px;
+  height: 16px;
 }
 
 .browser {
@@ -138,4 +189,8 @@ input {
 
 .message {
   color: #93c5fd;
+}
+
+.warning {
+  color: #fbbf24;
 }

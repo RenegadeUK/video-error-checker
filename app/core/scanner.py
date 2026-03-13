@@ -106,12 +106,24 @@ def _upsert_result(
     )
 
 
-def scan_target(session: Session, target: ScanTarget) -> int:
+def scan_target(
+    session: Session,
+    target: ScanTarget,
+    progress_callback=None,
+    files_done_ref: list[int] | None = None,
+    total_files: int = 0,
+    preloaded_files: list[dict] | None = None,
+) -> int:
     if not os.path.isdir(target.path):
         return 0
 
-    video_extensions = get_video_extensions(session)
-    files = get_file_list(target.path, video_extensions)
+    if preloaded_files is not None:
+        files = preloaded_files
+    else:
+        video_extensions = get_video_extensions(session)
+        files = get_file_list(target.path, video_extensions)
+    if files_done_ref is None:
+        files_done_ref = [0]
 
     general_webhook = _get_setting(session, "general_discord_webhook", "")
     failed_webhook = _get_setting(session, "failed_discord_webhook", "")
@@ -120,6 +132,11 @@ def scan_target(session: Session, target: ScanTarget) -> int:
     for file_info in files:
         file_path = str(file_info["file_path"])
         last_modified = float(file_info["last_modified"])
+
+        # Report progress BEFORE spending time on ffmpeg
+        if progress_callback is not None:
+            files_done_ref[0] += 1
+            progress_callback(target.label, file_path, files_done_ref[0], total_files)
 
         existing = (
             session.query(ScanResult)
@@ -175,9 +192,39 @@ def scan_target(session: Session, target: ScanTarget) -> int:
     return scanned_count
 
 
-def run_full_scan(session: Session) -> dict[str, int]:
+def run_full_scan(
+    session: Session,
+    progress_callback: "Callable[[str, str, int, int], None] | None" = None,
+) -> dict[str, int]:
     targets = session.query(ScanTarget).filter(ScanTarget.enabled.is_(True)).all()
+    video_extensions = get_video_extensions(session)
+
+    # Pre-count all files across all targets (fast — no ffmpeg)
+    file_lists: dict[int, list[dict]] = {}
+    total_files = 0
+    for target in targets:
+        if os.path.isdir(target.path):
+            files = get_file_list(target.path, video_extensions)
+            file_lists[target.id] = files
+            total_files += len(files)
+        else:
+            file_lists[target.id] = []
+
+    # Announce total immediately so UI can show a progress bar
+    if progress_callback is not None:
+        progress_callback("", "", 0, total_files)
+
+    # Shared mutable counter passed into scan_target via a list (avoids nonlocal)
+    files_done_ref: list[int] = [0]
+
     summary: dict[str, int] = {}
     for target in targets:
-        summary[target.label] = scan_target(session, target)
+        summary[target.label] = scan_target(
+            session,
+            target,
+            progress_callback=progress_callback,
+            files_done_ref=files_done_ref,
+            total_files=total_files,
+            preloaded_files=file_lists.get(target.id),
+        )
     return summary

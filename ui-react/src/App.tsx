@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "./api";
 import type { ResultRow, ScanStatus, Settings, Target } from "./types";
@@ -12,17 +12,34 @@ const DEFAULT_SETTINGS: Settings = {
   video_extensions: ".mp4,.mkv,.avi,.mov,.flv,.wmv",
 };
 
+const DEFAULT_SCAN_STATUS: ScanStatus = {
+  running: false,
+  last_started: null,
+  last_completed: null,
+  last_summary: {},
+  files_total: 0,
+  files_done: 0,
+  current_file: "",
+  current_target: "",
+};
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "Never";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [targets, setTargets] = useState<Target[]>([]);
   const [results, setResults] = useState<ResultRow[]>([]);
-  const [scanStatus, setScanStatus] = useState<ScanStatus>({
-    running: false,
-    last_started: null,
-    last_completed: null,
-    last_summary: {},
-  });
+  const [scanStatus, setScanStatus] = useState<ScanStatus>(DEFAULT_SCAN_STATUS);
   const [summary, setSummary] = useState<Record<string, Record<string, number>>>({});
   const [newLabel, setNewLabel] = useState("");
   const [newPath, setNewPath] = useState("");
@@ -32,8 +49,10 @@ export default function App() {
   const [browserPath, setBrowserPath] = useState("/media");
   const [browserDirs, setBrowserDirs] = useState<{ name: string; path: string }[]>([]);
   const [browserParent, setBrowserParent] = useState("/media");
+  const [errorsOnly, setErrorsOnly] = useState(false);
+  const wasRunning = useRef(false);
 
-  async function refreshAll() {
+  const refreshAll = useCallback(async () => {
     const [settingsData, targetsData, resultsData, statusData, summaryData] = await Promise.all([
       api.getSettings(),
       api.getTargets(),
@@ -44,27 +63,81 @@ export default function App() {
     setSettings({ ...DEFAULT_SETTINGS, ...settingsData });
     setTargets(targetsData);
     setResults(resultsData);
-    setScanStatus(statusData);
+    setScanStatus({ ...DEFAULT_SCAN_STATUS, ...statusData });
     setSummary(summaryData.by_target || {});
-  }
+  }, []);
 
   useEffect(() => {
     refreshAll().catch(() => setMessage("Failed to load data"));
+  }, [refreshAll]);
+
+  useEffect(() => {
+    const pollInterval = scanStatus.running ? 1000 : 5000;
     const interval = setInterval(() => {
-      api.getScanStatus().then(setScanStatus).catch(() => undefined);
-    }, 5000);
+      api
+        .getScanStatus()
+        .then((status) => {
+          const merged = { ...DEFAULT_SCAN_STATUS, ...status };
+          setScanStatus(merged);
+          if (wasRunning.current && !merged.running) {
+            setMessage("Scan completed");
+            refreshAll().catch(() => undefined);
+          }
+          wasRunning.current = merged.running;
+        })
+        .catch(() => undefined);
+    }, pollInterval);
+
     return () => clearInterval(interval);
-  }, []);
+  }, [scanStatus.running, refreshAll]);
 
   const errorCount = useMemo(
     () => results.filter((item) => item.status !== "OK").length,
     [results]
   );
+
+  const totalScanned = useMemo(
+    () =>
+      Object.values(summary).reduce(
+        (targetAcc, statuses) =>
+          targetAcc + Object.values(statuses).reduce((statusAcc, count) => statusAcc + count, 0),
+        0
+      ),
+    [summary]
+  );
+
+  const totalErrors = useMemo(
+    () =>
+      Object.values(summary).reduce(
+        (targetAcc, statuses) =>
+          targetAcc +
+          Object.entries(statuses).reduce(
+            (statusAcc, [status, count]) => statusAcc + (status === "OK" ? 0 : count),
+            0
+          ),
+        0
+      ),
+    [summary]
+  );
+
   const hasMediaTarget = useMemo(
     () => targets.some((target) => target.path === "/media" || target.path.startsWith("/media/")),
     [targets]
   );
+
   const showMediaWarning = targets.length === 0 || !hasMediaTarget;
+
+  const displayedResults = useMemo(
+    () => (errorsOnly ? results.filter((r) => r.status !== "OK") : results),
+    [results, errorsOnly]
+  );
+
+  const progressPct = useMemo(() => {
+    if (scanStatus.files_total <= 0) {
+      return 0;
+    }
+    return Math.min(100, Math.round((scanStatus.files_done / scanStatus.files_total) * 100));
+  }, [scanStatus.files_done, scanStatus.files_total]);
 
   async function saveSettings() {
     setSaving(true);
@@ -110,11 +183,13 @@ export default function App() {
   }
 
   async function runScan() {
-    await api.triggerScan();
-    setMessage("Scan trigger submitted");
-    setTimeout(() => {
-      refreshAll().catch(() => undefined);
-    }, 2000);
+    const response = await api.triggerScan();
+    if (response.status === "already-running") {
+      setMessage("A scan is already running");
+      return;
+    }
+    setMessage("Scan started");
+    refreshAll().catch(() => undefined);
   }
 
   async function openBrowser(path = "/media") {
@@ -138,11 +213,38 @@ export default function App() {
         </button>
       </header>
 
+      {scanStatus.running ? (
+        <section className="card scan-progress">
+          <div className="scan-progress-header">
+            <strong>
+              {scanStatus.current_target ? `Scanning ${scanStatus.current_target}` : "Scanning"}
+            </strong>
+            <span>
+              {scanStatus.files_total > 0
+                ? `${scanStatus.files_done} / ${scanStatus.files_total} files`
+                : "Preparing file list..."}
+            </span>
+          </div>
+          <div className="progress-track">
+            <div className="progress-fill" style={{ width: `${progressPct}%` }} />
+          </div>
+          <p className="scan-progress-file">{scanStatus.current_file || "Waiting for first file..."}</p>
+        </section>
+      ) : null}
+
       <nav className="tabs">
-        <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>Dashboard</button>
-        <button className={tab === "targets" ? "active" : ""} onClick={() => setTab("targets")}>Scan Targets</button>
-        <button className={tab === "results" ? "active" : ""} onClick={() => setTab("results")}>Results</button>
-        <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Settings</button>
+        <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>
+          Dashboard
+        </button>
+        <button className={tab === "targets" ? "active" : ""} onClick={() => setTab("targets")}>
+          Scan Targets
+        </button>
+        <button className={tab === "results" ? "active" : ""} onClick={() => setTab("results")}>
+          Results
+        </button>
+        <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
+          Settings
+        </button>
       </nav>
 
       {message ? <p className="message">{message}</p> : null}
@@ -155,20 +257,27 @@ export default function App() {
       {tab === "dashboard" && (
         <section className="card-grid">
           <div className="card">
-            <h3>Total Results</h3>
-            <p>{results.length}</p>
+            <h3>Enabled Targets</h3>
+            <p>{targets.filter((target) => target.enabled).length}</p>
           </div>
           <div className="card">
-            <h3>Errors</h3>
-            <p>{errorCount}</p>
+            <h3>Total Scanned Files</h3>
+            <p>{totalScanned}</p>
           </div>
           <div className="card">
-            <h3>Last Completed</h3>
-            <p>{scanStatus.last_completed || "Never"}</p>
+            <h3>Total Errors</h3>
+            <p>{totalErrors}</p>
           </div>
           <div className="card full">
-            <h3>Per Target Summary</h3>
-            <pre>{JSON.stringify(summary, null, 2)}</pre>
+            <h3>Last Scan</h3>
+            <p>Started: {formatDate(scanStatus.last_started)}</p>
+            <p>Completed: {formatDate(scanStatus.last_completed)}</p>
+            <p>
+              Last run summary:{" "}
+              {Object.keys(scanStatus.last_summary).length === 0
+                ? "No run yet"
+                : JSON.stringify(scanStatus.last_summary)}
+            </p>
           </div>
         </section>
       )}
@@ -244,7 +353,20 @@ export default function App() {
 
       {tab === "results" && (
         <section className="card">
-          <h3>Recent Results</h3>
+          <div className="results-header">
+            <h3>Recent Results</h3>
+            <div className="row-actions">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={errorsOnly}
+                  onChange={(e) => setErrorsOnly(e.target.checked)}
+                />
+                Errors only ({errorCount})
+              </label>
+              <button onClick={() => refreshAll().catch(() => undefined)}>Refresh</button>
+            </div>
+          </div>
           <table>
             <thead>
               <tr>
@@ -256,13 +378,13 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {results.map((result) => (
+              {displayedResults.map((result) => (
                 <tr key={result.id}>
                   <td>{result.label}</td>
                   <td className="path">{result.file_path}</td>
                   <td className={result.status === "OK" ? "ok" : "error"}>{result.status}</td>
                   <td>{result.scan_duration_seconds.toFixed(2)}</td>
-                  <td>{result.scanned_at}</td>
+                  <td>{formatDate(result.scanned_at)}</td>
                 </tr>
               ))}
             </tbody>
