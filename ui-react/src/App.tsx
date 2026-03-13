@@ -21,6 +21,7 @@ const DEFAULT_SCAN_STATUS: ScanStatus = {
   files_done: 0,
   current_file: "",
   current_target: "",
+  recent_logs: [],
 };
 
 function formatDate(value: string | null): string {
@@ -139,6 +140,11 @@ export default function App() {
     return Math.min(100, Math.round((scanStatus.files_done / scanStatus.files_total) * 100));
   }, [scanStatus.files_done, scanStatus.files_total]);
 
+  const recentLogs = useMemo(
+    () => [...scanStatus.recent_logs].slice(-80).reverse(),
+    [scanStatus.recent_logs]
+  );
+
   async function saveSettings() {
     setSaving(true);
     setMessage("");
@@ -229,6 +235,24 @@ export default function App() {
             <div className="progress-fill" style={{ width: `${progressPct}%` }} />
           </div>
           <p className="scan-progress-file">{scanStatus.current_file || "Waiting for first file..."}</p>
+        </section>
+      ) : null}
+
+      {recentLogs.length > 0 ? (
+        <section className="card scan-log-panel">
+          <div className="results-header">
+            <h3>Live Scan Activity</h3>
+            <span>{scanStatus.running ? "Live" : "Last run"}</span>
+          </div>
+          <div className="scan-log-list">
+            {recentLogs.map((entry, index) => (
+              <div className="scan-log-row" key={`${entry.timestamp}-${index}`}>
+                <span className="scan-log-time">{formatDate(entry.timestamp)}</span>
+                <span className={`scan-log-level scan-log-${entry.level}`}>{entry.level}</span>
+                <span className="scan-log-message">{entry.message}</span>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
 

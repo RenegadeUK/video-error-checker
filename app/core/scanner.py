@@ -1,5 +1,6 @@
 import os
 import subprocess
+from collections.abc import Callable
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -109,7 +110,8 @@ def _upsert_result(
 def scan_target(
     session: Session,
     target: ScanTarget,
-    progress_callback=None,
+    progress_callback: Callable[[str, str, int, int], None] | None = None,
+    log_callback: Callable[[str, str], None] | None = None,
     files_done_ref: list[int] | None = None,
     total_files: int = 0,
     preloaded_files: list[dict] | None = None,
@@ -128,15 +130,21 @@ def scan_target(
     general_webhook = _get_setting(session, "general_discord_webhook", "")
     failed_webhook = _get_setting(session, "failed_discord_webhook", "")
 
+    if log_callback is not None:
+        log_callback("info", f"Target {target.label}: {len(files)} files discovered")
+
     scanned_count = 0
     for file_info in files:
         file_path = str(file_info["file_path"])
         last_modified = float(file_info["last_modified"])
+        file_name = os.path.basename(file_path)
 
         # Report progress BEFORE spending time on ffmpeg
         if progress_callback is not None:
             files_done_ref[0] += 1
             progress_callback(target.label, file_path, files_done_ref[0], total_files)
+        if log_callback is not None:
+            log_callback("info", f"Checking {file_name} ({files_done_ref[0]}/{total_files or len(files)})")
 
         existing = (
             session.query(ScanResult)
@@ -145,6 +153,8 @@ def scan_target(
         )
         existing_modified = existing.last_modified if existing else 0.0
         if last_modified <= existing_modified:
+            if log_callback is not None:
+                log_callback("info", f"Skipped unchanged: {file_name}")
             continue
 
         started = datetime.utcnow()
@@ -163,6 +173,8 @@ def scan_target(
         scanned_count += 1
 
         if check["status"] == "OK":
+            if log_callback is not None:
+                log_callback("info", f"OK: {file_name}")
             send_discord_message(
                 (
                     f"✅ [{target.label}] Video check completed successfully:\n"
@@ -173,6 +185,8 @@ def scan_target(
                 general_webhook,
             )
         else:
+            if log_callback is not None:
+                log_callback("warn", f"Issue: {file_name} ({check['status']})")
             send_discord_message(
                 (
                     f"⚠️ [{target.label}] Video check failed:\n"
@@ -189,12 +203,15 @@ def scan_target(
         f"✅ [{target.label}] Video scan completed. {scanned_count} files checked.",
         general_webhook,
     )
+    if log_callback is not None:
+        log_callback("info", f"Target {target.label} complete: {scanned_count} files scanned")
     return scanned_count
 
 
 def run_full_scan(
     session: Session,
     progress_callback: "Callable[[str, str, int, int], None] | None" = None,
+    log_callback: Callable[[str, str], None] | None = None,
 ) -> dict[str, int]:
     targets = session.query(ScanTarget).filter(ScanTarget.enabled.is_(True)).all()
     video_extensions = get_video_extensions(session)
@@ -213,6 +230,8 @@ def run_full_scan(
     # Announce total immediately so UI can show a progress bar
     if progress_callback is not None:
         progress_callback("", "", 0, total_files)
+    if log_callback is not None:
+        log_callback("info", f"Scan started: {len(targets)} targets, {total_files} total files")
 
     # Shared mutable counter passed into scan_target via a list (avoids nonlocal)
     files_done_ref: list[int] = [0]
@@ -223,8 +242,11 @@ def run_full_scan(
             session,
             target,
             progress_callback=progress_callback,
+            log_callback=log_callback,
             files_done_ref=files_done_ref,
             total_files=total_files,
             preloaded_files=file_lists.get(target.id),
         )
+    if log_callback is not None:
+        log_callback("info", "Scan completed")
     return summary

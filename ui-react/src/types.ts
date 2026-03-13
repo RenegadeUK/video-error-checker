@@ -23,6 +23,12 @@ export type ResultRow = {
   scanned_at: string;
 };
 
+export type ScanLogEntry = {
+  timestamp: string;
+  level: string;
+  message: string;
+};
+
 export type ScanStatus = {
   running: boolean;
   last_started: string | null;
@@ -32,4 +38,5 @@ export type ScanStatus = {
   files_done: number;
   current_file: string;
   current_target: string;
+  recent_logs: ScanLogEntry[];
 };

@@ -40,6 +40,53 @@ body {
   overflow-wrap: anywhere;
 }
 
+.scan-log-panel {
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.scan-log-list {
+  display: grid;
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.scan-log-row {
+  display: grid;
+  grid-template-columns: 180px 64px 1fr;
+  gap: 10px;
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: 6px;
+}
+
+.scan-log-time {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.scan-log-level {
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.scan-log-info {
+  color: #93c5fd;
+}
+
+.scan-log-warn {
+  color: #fbbf24;
+}
+
+.scan-log-error {
+  color: #ef4444;
+}
+
+.scan-log-message {
+  overflow-wrap: anywhere;
+}
+
 .progress-track {
   height: 10px;
   width: 100%;
