@@ -47,7 +47,7 @@ if [ ! -s "$PGDATA_DIR/PG_VERSION" ]; then
   run_as_runtime_user "$INITDB -D '$PGDATA_DIR' -U '$POSTGRES_USER' --auth-local=trust --auth-host=scram-sha-256"
 
   run_as_runtime_user "$PG_CTL -D '$PGDATA_DIR' -o \"$PG_SERVER_OPTS\" -w start"
-  run_as_runtime_user "psql -p $POSTGRES_PORT -U '$POSTGRES_USER' -d postgres -c \"ALTER USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';\""
+  run_as_runtime_user "psql -h 127.0.0.1 -p $POSTGRES_PORT -U '$POSTGRES_USER' -d postgres -c \"ALTER USER $POSTGRES_USER WITH PASSWORD '$POSTGRES_PASSWORD';\""
   run_as_runtime_user "psql -h 127.0.0.1 -p $POSTGRES_PORT -U '$POSTGRES_USER' -d postgres -c \"CREATE DATABASE $POSTGRES_DB OWNER $POSTGRES_USER;\" || true"
   run_as_runtime_user "$PG_CTL -D '$PGDATA_DIR' -m fast -w stop"
 fi
