@@ -55,7 +55,11 @@ def get_summary(db: Session = Depends(get_db)) -> dict:
         summary[label][status] = int(count)
 
     latest_scan = db.query(func.max(ScanResult.scanned_at)).scalar()
+    total_results = db.query(func.count(ScanResult.id)).scalar() or 0
+    total_errors = db.query(func.count(ScanResult.id)).filter(ScanResult.status != "OK").scalar() or 0
     return {
         "by_target": summary,
         "last_scan": latest_scan.isoformat() if isinstance(latest_scan, datetime) else None,
+        "total_results": int(total_results),
+        "total_errors": int(total_errors),
     }

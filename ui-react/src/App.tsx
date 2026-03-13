@@ -42,6 +42,9 @@ export default function App() {
   const [results, setResults] = useState<ResultRow[]>([]);
   const [scanStatus, setScanStatus] = useState<ScanStatus>(DEFAULT_SCAN_STATUS);
   const [summary, setSummary] = useState<Record<string, Record<string, number>>>({});
+  const [dbLastScan, setDbLastScan] = useState<string | null>(null);
+  const [dbTotalResults, setDbTotalResults] = useState(0);
+  const [dbTotalErrors, setDbTotalErrors] = useState(0);
   const [newLabel, setNewLabel] = useState("");
   const [newPath, setNewPath] = useState("");
   const [saving, setSaving] = useState(false);
@@ -66,6 +69,9 @@ export default function App() {
     setResults(resultsData);
     setScanStatus({ ...DEFAULT_SCAN_STATUS, ...statusData });
     setSummary(summaryData.by_target || {});
+    setDbLastScan(summaryData.last_scan || null);
+    setDbTotalResults(summaryData.total_results || 0);
+    setDbTotalErrors(summaryData.total_errors || 0);
   }, []);
 
   useEffect(() => {
@@ -97,29 +103,11 @@ export default function App() {
     [results]
   );
 
-  const totalScanned = useMemo(
-    () =>
-      Object.values(summary).reduce(
-        (targetAcc, statuses) =>
-          targetAcc + Object.values(statuses).reduce((statusAcc, count) => statusAcc + count, 0),
-        0
-      ),
-    [summary]
-  );
+  const totalScanned = dbTotalResults;
 
-  const totalErrors = useMemo(
-    () =>
-      Object.values(summary).reduce(
-        (targetAcc, statuses) =>
-          targetAcc +
-          Object.entries(statuses).reduce(
-            (statusAcc, [status, count]) => statusAcc + (status === "OK" ? 0 : count),
-            0
-          ),
-        0
-      ),
-    [summary]
-  );
+  const totalErrors = dbTotalErrors;
+
+  const effectiveLastCompleted = scanStatus.last_completed || dbLastScan;
 
   const hasMediaTarget = useMemo(
     () => targets.some((target) => target.path === "/media" || target.path.startsWith("/media/")),
@@ -295,7 +283,10 @@ export default function App() {
           <div className="card full">
             <h3>Last Scan</h3>
             <p>Started: {formatDate(scanStatus.last_started)}</p>
-            <p>Completed: {formatDate(scanStatus.last_completed)}</p>
+            <p>Completed: {formatDate(effectiveLastCompleted)}</p>
+            {scanStatus.last_started === null && dbLastScan ? (
+              <p className="message">Runtime restarted since last completed scan; using DB history.</p>
+            ) : null}
             <p>
               Last run summary:{" "}
               {Object.keys(scanStatus.last_summary).length === 0

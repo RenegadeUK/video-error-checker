@@ -43,7 +43,13 @@ export const api = {
     request<{ status: string }>(`/api/targets/${id}`, { method: "DELETE" }),
 
   getResults: () => request<ResultRow[]>("/api/results"),
-  getSummary: () => request<{ by_target: Record<string, Record<string, number>>; last_scan: string | null }>("/api/results/summary"),
+  getSummary: () =>
+    request<{
+      by_target: Record<string, Record<string, number>>;
+      last_scan: string | null;
+      total_results: number;
+      total_errors: number;
+    }>("/api/results/summary"),
 
   triggerScan: () => request<{ status: string }>("/api/scan/trigger", { method: "POST" }),
   getScanStatus: () => request<ScanStatus>("/api/scan/status"),
