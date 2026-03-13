@@ -1,0 +1,50 @@
+import type { ResultRow, ScanStatus, Settings, Target } from "./types";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export const api = {
+  getSettings: () => request<Settings>("/api/settings"),
+  updateSettings: (payload: {
+    general_discord_webhook: string;
+    failed_discord_webhook: string;
+    scan_interval_seconds: number;
+    video_extensions: string;
+  }) =>
+    request<{ status: string }>("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  getTargets: () => request<Target[]>("/api/targets"),
+  browseTargets: (path?: string) =>
+    request<{ path: string; parent: string; directories: { name: string; path: string }[] }>(
+      `/api/targets/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`
+    ),
+  createTarget: (payload: { label: string; path: string; enabled: boolean }) =>
+    request<{ id: number }>("/api/targets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateTarget: (id: number, payload: { label: string; path: string; enabled: boolean }) =>
+    request<{ status: string }>(`/api/targets/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteTarget: (id: number) =>
+    request<{ status: string }>(`/api/targets/${id}`, { method: "DELETE" }),
+
+  getResults: () => request<ResultRow[]>("/api/results"),
+  getSummary: () => request<{ by_target: Record<string, Record<string, number>>; last_scan: string | null }>("/api/results/summary"),
+
+  triggerScan: () => request<{ status: string }>("/api/scan/trigger", { method: "POST" }),
+  getScanStatus: () => request<ScanStatus>("/api/scan/status"),
+};

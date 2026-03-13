@@ -1,0 +1,31 @@
+export type Settings = {
+  general_discord_webhook: string;
+  failed_discord_webhook: string;
+  scan_interval_seconds: string;
+  video_extensions: string;
+};
+
+export type Target = {
+  id: number;
+  label: string;
+  path: string;
+  enabled: boolean;
+};
+
+export type ResultRow = {
+  id: number;
+  label: string;
+  file_path: string;
+  last_modified: number;
+  status: string;
+  details: string;
+  scan_duration_seconds: number;
+  scanned_at: string;
+};
+
+export type ScanStatus = {
+  running: boolean;
+  last_started: string | null;
+  last_completed: string | null;
+  last_summary: Record<string, number>;
+};

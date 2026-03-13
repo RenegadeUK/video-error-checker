@@ -1,0 +1,141 @@
+:root {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e5e7eb;
+  background-color: #0f172a;
+}
+
+body {
+  margin: 0;
+  background: #0f172a;
+}
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+button {
+  background: #2563eb;
+  color: white;
+  border: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button.active {
+  background: #1d4ed8;
+}
+
+.card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.full {
+  grid-column: span 3;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 3fr auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.browser {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+  background: #0b1220;
+}
+
+.browser-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.browser-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  border-bottom: 1px solid #1f2937;
+  padding: 8px;
+  vertical-align: top;
+}
+
+.path {
+  max-width: 420px;
+  overflow-wrap: anywhere;
+}
+
+.ok {
+  color: #22c55e;
+}
+
+.error {
+  color: #ef4444;
+}
+
+.form {
+  display: grid;
+  gap: 10px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+}
+
+input {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 8px;
+  background: #0b1220;
+  color: #e5e7eb;
+}
+
+.message {
+  color: #93c5fd;
+}

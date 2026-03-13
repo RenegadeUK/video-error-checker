@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+
+config/
+
+ui-react/node_modules/
+ui-react/dist/
