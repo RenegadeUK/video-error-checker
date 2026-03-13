@@ -39,6 +39,21 @@ def _append_log(level: str, message: str) -> None:
             scan_state.recent_logs = scan_state.recent_logs[-MAX_SCAN_LOGS:]
 
 
+def _read_persisted_results_count() -> int:
+    try:
+        with SessionLocal() as session:
+            return int(session.query(func.count(ScanResult.id)).scalar() or 0)
+    except Exception:
+        return -1
+
+
+def _refresh_persisted_results_count() -> None:
+    count = _read_persisted_results_count()
+    if count >= 0:
+        with scan_state.lock:
+            scan_state.persisted_results_count = count
+
+
 def add_system_log(level: str, message: str) -> None:
     _append_log(level, message)
 
@@ -99,6 +114,7 @@ def start_scheduler(interval_seconds: int) -> None:
     if not scheduler.running:
         scheduler.start()
         _append_log("info", "Scheduler started")
+    _refresh_persisted_results_count()
     reschedule_scan_job(interval_seconds)
     _append_log("info", f"Scan interval set to {max(interval_seconds, 60)} seconds")
 
@@ -135,6 +151,7 @@ def trigger_startup_scan() -> bool:
 
 
 def get_scan_status() -> dict:
+    _refresh_persisted_results_count()
     with scan_state.lock:
         return {
             "running": scan_state.running,
