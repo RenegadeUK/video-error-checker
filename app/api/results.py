@@ -106,19 +106,27 @@ def rescan_result(result_id: int, db: Session = Depends(get_db)) -> dict:
             "scanned_at": result.scanned_at.isoformat(),
         }
 
-    result.status = "Rescan Queued"
-    result.details = "Queued for manual rescan"
+    enqueue_state = enqueue_rescan(result.id)
+    if enqueue_state == "started":
+        result.status = "Rescanning"
+        result.details = "Manual rescan in progress"
+    elif enqueue_state == "queued":
+        result.status = "Rescan Queued"
+        result.details = "Queued for manual rescan"
+    else:
+        # Duplicate request for an already active/queued row.
+        result = db.query(ScanResult).filter(ScanResult.id == result_id).first()
+        if result:
+            return {
+                "id": result.id,
+                "status": result.status,
+                "details": result.details,
+                "scan_duration_seconds": result.scan_duration_seconds,
+                "scanned_at": result.scanned_at.isoformat(),
+            }
+
     result.scanned_at = datetime.utcnow()
     db.commit()
-
-    enqueued = enqueue_rescan(result.id)
-    if not enqueued:
-        result = db.query(ScanResult).filter(ScanResult.id == result_id).first()
-        if result and result.status == "Rescan Queued":
-            result.status = "Rescanning"
-            result.details = "Manual rescan in progress"
-            result.scanned_at = datetime.utcnow()
-            db.commit()
 
     return {
         "id": result.id,

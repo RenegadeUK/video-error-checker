@@ -154,15 +154,21 @@ def stop_rescan_worker() -> None:
     rescan_state.stop_event.set()
 
 
-def enqueue_rescan(result_id: int) -> bool:
+def enqueue_rescan(result_id: int) -> str:
     with rescan_state.lock:
         if rescan_state.active_result_id == result_id or result_id in rescan_state.queued_ids:
-            return False
+            return "duplicate"
+
+        immediate = rescan_state.active_result_id is None and not rescan_state.queue
         rescan_state.queue.append(result_id)
         rescan_state.queued_ids.add(result_id)
         queue_depth = len(rescan_state.queue)
+    if immediate:
+        _append_log("info", f"Rescan accepted for immediate processing: result {result_id}", "rescan")
+        return "started"
+
     _append_log("info", f"Rescan queued for result {result_id} (queue: {queue_depth})", "rescan")
-    return True
+    return "queued"
 
 
 def add_system_log(level: str, message: str) -> None:
