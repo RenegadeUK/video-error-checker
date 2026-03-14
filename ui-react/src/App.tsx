@@ -63,6 +63,18 @@ function formatDate(value: string | null): string {
   return date.toLocaleString();
 }
 
+function formatElapsedSeconds(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0.0s";
+  }
+  if (value < 60) {
+    return `${value.toFixed(1)}s`;
+  }
+  const minutes = Math.floor(value / 60);
+  const seconds = value - minutes * 60;
+  return `${minutes}min ${seconds.toFixed(1)}s`;
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>(() => parseTabFromHash(window.location.hash) || "dashboard");
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -375,7 +387,7 @@ export default function App() {
                   <h3>Scan Queue</h3>
                   <p>
                     {scanStatus.running
-                      ? `${scanStatus.current_file || "(starting...)"} (${scanStatus.current_file_elapsed_seconds.toFixed(1)}s)`
+                      ? `${scanStatus.current_file || "(starting...)"} (${formatElapsedSeconds(scanStatus.current_file_elapsed_seconds)})`
                       : "IDLE"}
                   </p>
                 </div>
@@ -383,7 +395,7 @@ export default function App() {
                   <h3>Rescan Queue</h3>
                   <p>
                     {scanStatus.active_rescan.result_id !== null
-                      ? `#${scanStatus.active_rescan.result_id} (${scanStatus.active_rescan.elapsed_seconds.toFixed(1)}s)`
+                      ? `#${scanStatus.active_rescan.result_id} (${formatElapsedSeconds(scanStatus.active_rescan.elapsed_seconds)})`
                       : "IDLE"}
                   </p>
                   <p className="scan-db-meta">Queued: {scanStatus.queued_rescans.length}</p>
@@ -419,7 +431,7 @@ export default function App() {
                 </p>
                 <p className="scan-db-meta">
                   {scanStatus.running && scanStatus.current_file
-                    ? `Current file runtime: ${scanStatus.current_file_elapsed_seconds.toFixed(1)}s`
+                    ? `Current file runtime: ${formatElapsedSeconds(scanStatus.current_file_elapsed_seconds)}`
                     : "Current file runtime: IDLE"}
                 </p>
               </section>
