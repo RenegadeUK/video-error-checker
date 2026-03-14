@@ -7,7 +7,7 @@ from app.api.scan import router as scan_router
 from app.api.settings import router as settings_router
 from app.api.targets import router as targets_router
 from app.core.database import SessionLocal, init_db
-from app.core.models import ScanTarget, Setting
+from app.core.models import ScanResult, ScanTarget, Setting
 from app.core.scheduler import add_system_log, scheduler, start_scheduler, trigger_startup_scan
 from app.ui.ui_routes import router as ui_router
 
@@ -16,6 +16,15 @@ from app.ui.ui_routes import router as ui_router
 async def lifespan(app: FastAPI):
     init_db()
     with SessionLocal() as session:
+        stale_rescans = (
+            session.query(ScanResult).filter(ScanResult.status == "Rescanning").all()
+        )
+        for row in stale_rescans:
+            row.status = "Rescan Interrupted"
+            row.details = "Rescan interrupted by application restart"
+        if stale_rescans:
+            session.commit()
+
         interval_row = session.query(Setting).filter(Setting.key == "scan_interval_seconds").first()
         interval_seconds = int(interval_row.value) if interval_row else 3600
         enabled_targets = (

@@ -537,12 +537,18 @@ export default function App() {
                   <td>{formatDate(result.scanned_at)}</td>
                   <td>
                     {result.status !== "OK" ? (
+                      (() => {
+                        const rowIsRescanning =
+                          rescanningResultIds.has(result.id) || result.status === "Rescanning";
+                        return (
                       <button
                         onClick={() => rescanResult(result.id)}
-                        disabled={rescanningResultIds.has(result.id)}
+                        disabled={rowIsRescanning}
                       >
-                        {rescanningResultIds.has(result.id) ? "Rescanning..." : "Rescan"}
+                        {rowIsRescanning ? "Rescanning..." : "Rescan"}
                       </button>
+                        );
+                      })()
                     ) : (
                       "-"
                     )}

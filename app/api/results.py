@@ -114,20 +114,43 @@ def rescan_result(result_id: int, db: Session = Depends(get_db)) -> dict:
             "scanned_at": result.scanned_at.isoformat(),
         }
 
-    started = time.perf_counter()
-    check = check_video_file(file_path)
-    duration = time.perf_counter() - started
-
-    result.status = check["status"]
-    result.details = check["details"]
-    result.scan_duration_seconds = duration
+    # Persist in-progress state so rescans survive UI refresh/reboot visibility.
+    result.status = "Rescanning"
+    result.details = "Manual rescan in progress"
     result.scanned_at = datetime.utcnow()
-    try:
-        result.last_modified = os.path.getmtime(file_path)
-    except OSError:
-        pass
-
     db.commit()
+
+    started = time.perf_counter()
+    try:
+        check = check_video_file(file_path)
+        duration = time.perf_counter() - started
+
+        result.status = check["status"]
+        result.details = check["details"]
+        result.scan_duration_seconds = duration
+        result.scanned_at = datetime.utcnow()
+        try:
+            result.last_modified = os.path.getmtime(file_path)
+        except OSError:
+            pass
+
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        result = db.query(ScanResult).filter(ScanResult.id == result_id).first()
+        if result:
+            result.status = "Rescan Failed"
+            result.details = f"Manual rescan failed: {exc}"
+            result.scanned_at = datetime.utcnow()
+            db.commit()
+            return {
+                "id": result.id,
+                "status": result.status,
+                "details": result.details,
+                "scan_duration_seconds": result.scan_duration_seconds,
+                "scanned_at": result.scanned_at.isoformat(),
+            }
+        raise
 
     return {
         "id": result.id,
