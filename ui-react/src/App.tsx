@@ -376,7 +376,9 @@ export default function App() {
                     {scanStatus.running
                       ? scanStatus.files_total > 0
                         ? `${scanStatus.files_done} / ${scanStatus.files_total} files`
-                        : "Preparing file list..."
+                        : scanStatus.files_done > 0
+                          ? `${scanStatus.files_done} files indexed...`
+                          : "Preparing file list..."
                       : "Idle"}
                   </span>
                 </div>

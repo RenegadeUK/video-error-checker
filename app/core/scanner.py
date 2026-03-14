@@ -305,17 +305,30 @@ def run_full_scan(
 ) -> dict[str, int]:
     targets = session.query(ScanTarget).filter(ScanTarget.enabled.is_(True)).all()
     video_extensions = get_video_extensions(session)
+    if log_callback is not None:
+        log_callback("info", f"Indexing files across {len(targets)} enabled targets")
 
     # Pre-count all files across all targets (fast — no ffmpeg)
     file_lists: dict[int, list[dict]] = {}
     total_files = 0
     for target in targets:
         if os.path.isdir(target.path):
+            if log_callback is not None:
+                log_callback("info", f"Indexing target {target.label}: {target.path}")
             files = get_file_list(target.path, video_extensions)
             file_lists[target.id] = files
             total_files += len(files)
+            if progress_callback is not None:
+                progress_callback(target.label, "", total_files, 0)
+            if log_callback is not None:
+                log_callback(
+                    "info",
+                    f"Indexed {len(files)} files in {target.label} ({total_files} total discovered)",
+                )
         else:
             file_lists[target.id] = []
+            if log_callback is not None:
+                log_callback("warn", f"Indexing skipped for {target.label}: path not found ({target.path})")
 
     # Announce total immediately so UI can show a progress bar
     if progress_callback is not None:
