@@ -72,7 +72,7 @@ export default function App() {
   const [browserDirs, setBrowserDirs] = useState<{ name: string; path: string }[]>([]);
   const [browserParent, setBrowserParent] = useState("/media");
   const [errorsOnly, setErrorsOnly] = useState(false);
-  const [rescanningResultId, setRescanningResultId] = useState<number | null>(null);
+  const [rescanningResultIds, setRescanningResultIds] = useState<Set<number>>(new Set());
   const wasRunning = useRef(false);
 
   const refreshAll = useCallback(async () => {
@@ -238,7 +238,11 @@ export default function App() {
   }
 
   async function rescanResult(resultId: number) {
-    setRescanningResultId(resultId);
+    setRescanningResultIds((previous) => {
+      const next = new Set(previous);
+      next.add(resultId);
+      return next;
+    });
     try {
       await api.rescanResult(resultId);
       setMessage("Result rescanned");
@@ -246,7 +250,11 @@ export default function App() {
     } catch {
       setMessage("Failed to rescan result");
     } finally {
-      setRescanningResultId(null);
+      setRescanningResultIds((previous) => {
+        const next = new Set(previous);
+        next.delete(resultId);
+        return next;
+      });
     }
   }
 
@@ -529,9 +537,9 @@ export default function App() {
                     {result.status !== "OK" ? (
                       <button
                         onClick={() => rescanResult(result.id)}
-                        disabled={rescanningResultId === result.id}
+                        disabled={rescanningResultIds.has(result.id)}
                       >
-                        {rescanningResultId === result.id ? "Rescanning..." : "Rescan"}
+                        {rescanningResultIds.has(result.id) ? "Rescanning..." : "Rescan"}
                       </button>
                     ) : (
                       "-"
