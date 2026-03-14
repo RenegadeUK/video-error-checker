@@ -93,6 +93,32 @@ body {
   overflow-wrap: anywhere;
 }
 
+.scan-log-source {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
+.scan-log-source-scan {
+  background: #1e3a8a;
+  color: #bfdbfe;
+}
+
+.scan-log-source-rescan {
+  background: #14532d;
+  color: #bbf7d0;
+}
+
+.scan-log-source-system {
+  background: #374151;
+  color: #e5e7eb;
+}
+
 .progress-track {
   height: 10px;
   width: 100%;

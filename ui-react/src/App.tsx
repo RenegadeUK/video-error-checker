@@ -405,7 +405,14 @@ export default function App() {
                       <div className="scan-log-row" key={`${entry.timestamp}-${index}`}>
                         <span className="scan-log-time">{formatDate(entry.timestamp)}</span>
                         <span className={`scan-log-level scan-log-${entry.level}`}>{entry.level}</span>
-                        <span className="scan-log-message">{entry.message}</span>
+                        <span className="scan-log-message">
+                          {entry.source ? (
+                            <span className={`scan-log-source scan-log-source-${entry.source}`}>
+                              {entry.source === "rescan" ? "RESCAN" : entry.source.toUpperCase()}
+                            </span>
+                          ) : null}
+                          {entry.message}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -538,14 +545,16 @@ export default function App() {
                   <td>
                     {result.status !== "OK" ? (
                       (() => {
+                        const rowIsQueued = result.status === "Rescan Queued";
                         const rowIsRescanning =
                           rescanningResultIds.has(result.id) || result.status === "Rescanning";
+                        const rowBusy = rowIsQueued || rowIsRescanning;
                         return (
                       <button
                         onClick={() => rescanResult(result.id)}
-                        disabled={rowIsRescanning}
+                        disabled={rowBusy}
                       >
-                        {rowIsRescanning ? "Rescanning..." : "Rescan"}
+                        {rowIsQueued ? "Queued..." : rowIsRescanning ? "Rescanning..." : "Rescan"}
                       </button>
                         );
                       })()

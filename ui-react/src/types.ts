@@ -27,6 +27,7 @@ export type ScanLogEntry = {
   timestamp: string;
   level: string;
   message: string;
+  source?: string;
 };
 
 export type ScanStatus = {

@@ -1,5 +1,7 @@
 import os
 import threading
+import time
+from collections import deque
 from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -8,7 +10,7 @@ from sqlalchemy import func
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.models import ScanResult
-from app.core.scanner import run_full_scan
+from app.core.scanner import check_video_file, run_full_scan
 
 
 class ScanState:
@@ -26,15 +28,28 @@ class ScanState:
         self.persisted_results_count: int = 0
 
 
+class RescanQueueState:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.queue: deque[int] = deque()
+        self.queued_ids: set[int] = set()
+        self.active_result_id: int | None = None
+        self.worker_thread: threading.Thread | None = None
+        self.stop_event = threading.Event()
+
+
 scan_state = ScanState()
+rescan_state = RescanQueueState()
 scheduler = BackgroundScheduler(timezone="UTC")
 MAX_SCAN_LOGS = 200
 
 
-def _append_log(level: str, message: str) -> None:
+def _append_log(level: str, message: str, source: str = "scan") -> None:
     now = datetime.utcnow().isoformat()
     with scan_state.lock:
-        scan_state.recent_logs.append({"timestamp": now, "level": level, "message": message})
+        scan_state.recent_logs.append(
+            {"timestamp": now, "level": level, "message": message, "source": source}
+        )
         if len(scan_state.recent_logs) > MAX_SCAN_LOGS:
             scan_state.recent_logs = scan_state.recent_logs[-MAX_SCAN_LOGS:]
 
@@ -54,8 +69,104 @@ def _refresh_persisted_results_count() -> None:
             scan_state.persisted_results_count = count
 
 
+def _process_rescan_result(result_id: int) -> None:
+    with SessionLocal() as session:
+        result = session.query(ScanResult).filter(ScanResult.id == result_id).first()
+        if not result:
+            _append_log("warn", f"Queued rescan skipped: result {result_id} not found", "rescan")
+            return
+
+        file_path = result.file_path
+        _append_log("info", f"Rescan started for result {result_id}", "rescan")
+        if not os.path.exists(file_path):
+            result.status = "File Missing"
+            result.details = "File no longer exists at recorded path"
+            result.scan_duration_seconds = 0.0
+            result.scanned_at = datetime.utcnow()
+            session.commit()
+            _append_log("warn", f"Rescan missing file: {file_path}", "rescan")
+            return
+
+        result.status = "Rescanning"
+        result.details = "Manual rescan in progress"
+        result.scanned_at = datetime.utcnow()
+        session.commit()
+
+        started = time.perf_counter()
+        try:
+            check = check_video_file(file_path)
+            duration = time.perf_counter() - started
+
+            result.status = check["status"]
+            result.details = check["details"]
+            result.scan_duration_seconds = duration
+            result.scanned_at = datetime.utcnow()
+            try:
+                result.last_modified = os.path.getmtime(file_path)
+            except OSError:
+                pass
+            session.commit()
+            _append_log("info", f"Rescan complete for result {result_id}: {result.status}", "rescan")
+        except Exception as exc:
+            session.rollback()
+            result = session.query(ScanResult).filter(ScanResult.id == result_id).first()
+            if result:
+                result.status = "Rescan Failed"
+                result.details = f"Manual rescan failed: {exc}"
+                result.scanned_at = datetime.utcnow()
+                session.commit()
+            _append_log("error", f"Rescan failed for result {result_id}: {exc}", "rescan")
+
+
+def _rescan_worker_loop() -> None:
+    _append_log("info", "Rescan worker started", "rescan")
+    while not rescan_state.stop_event.is_set():
+        result_id: int | None = None
+        with rescan_state.lock:
+            if rescan_state.queue:
+                result_id = rescan_state.queue.popleft()
+                rescan_state.queued_ids.discard(result_id)
+                rescan_state.active_result_id = result_id
+
+        if result_id is None:
+            time.sleep(0.2)
+            continue
+
+        _process_rescan_result(result_id)
+
+        with rescan_state.lock:
+            if rescan_state.active_result_id == result_id:
+                rescan_state.active_result_id = None
+
+    _append_log("info", "Rescan worker stopped", "rescan")
+
+
+def start_rescan_worker() -> None:
+    with rescan_state.lock:
+        if rescan_state.worker_thread and rescan_state.worker_thread.is_alive():
+            return
+        rescan_state.stop_event.clear()
+        rescan_state.worker_thread = threading.Thread(target=_rescan_worker_loop, daemon=True)
+        rescan_state.worker_thread.start()
+
+
+def stop_rescan_worker() -> None:
+    rescan_state.stop_event.set()
+
+
+def enqueue_rescan(result_id: int) -> bool:
+    with rescan_state.lock:
+        if rescan_state.active_result_id == result_id or result_id in rescan_state.queued_ids:
+            return False
+        rescan_state.queue.append(result_id)
+        rescan_state.queued_ids.add(result_id)
+        queue_depth = len(rescan_state.queue)
+    _append_log("info", f"Rescan queued for result {result_id} (queue: {queue_depth})", "rescan")
+    return True
+
+
 def add_system_log(level: str, message: str) -> None:
-    _append_log(level, message)
+    _append_log(level, message, "system")
 
 
 def _progress_callback(target_label: str, file_path: str, done: int, total: int) -> None:
@@ -67,7 +178,7 @@ def _progress_callback(target_label: str, file_path: str, done: int, total: int)
 
 
 def _log_callback(level: str, message: str) -> None:
-    _append_log(level, message)
+    _append_log(level, message, "scan")
 
 
 def _run_scan_job() -> None:
@@ -82,7 +193,7 @@ def _run_scan_job() -> None:
         scan_state.current_target = ""
         scan_state.recent_logs = []
 
-    _append_log("info", "Scan job started")
+    _append_log("info", "Scan job started", "scan")
 
     try:
         with SessionLocal() as session:
@@ -98,25 +209,25 @@ def _run_scan_job() -> None:
             persisted_count = int(session.query(func.count(ScanResult.id)).scalar() or 0)
         with scan_state.lock:
             scan_state.persisted_results_count = persisted_count
-        _append_log("info", f"DB persisted rows: {persisted_count}")
+        _append_log("info", f"DB persisted rows: {persisted_count}", "scan")
     except Exception as exc:
-        _append_log("error", f"Scan failed: {exc}")
+        _append_log("error", f"Scan failed: {exc}", "scan")
     finally:
         with scan_state.lock:
             scan_state.running = False
             scan_state.last_completed = datetime.utcnow()
             scan_state.current_file = ""
             scan_state.current_target = ""
-        _append_log("info", "Scan job finished")
+        _append_log("info", "Scan job finished", "scan")
 
 
 def start_scheduler(interval_seconds: int) -> None:
     if not scheduler.running:
         scheduler.start()
-        _append_log("info", "Scheduler started")
+        _append_log("info", "Scheduler started", "system")
     _refresh_persisted_results_count()
     reschedule_scan_job(interval_seconds)
-    _append_log("info", f"Scan interval set to {max(interval_seconds, 60)} seconds")
+    _append_log("info", f"Scan interval set to {max(interval_seconds, 60)} seconds", "system")
 
 
 def reschedule_scan_job(interval_seconds: int) -> None:
@@ -142,9 +253,9 @@ def trigger_manual_scan() -> bool:
 def trigger_startup_scan() -> bool:
     with scan_state.lock:
         if scan_state.running:
-            _append_log("warn", "Startup scan skipped: scan already running")
+            _append_log("warn", "Startup scan skipped: scan already running", "scan")
             return False
-    _append_log("info", "Container restart detected: running startup scan")
+    _append_log("info", "Container restart detected: running startup scan", "scan")
     thread = threading.Thread(target=_run_scan_job, daemon=True)
     thread.start()
     return True
