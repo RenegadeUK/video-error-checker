@@ -65,21 +65,22 @@ function formatDate(value: string | null): string {
 
 function formatElapsedSeconds(value: number): string {
   if (!Number.isFinite(value) || value <= 0) {
-    return "0.0s";
+    return "0s";
   }
-  if (value < 60) {
-    return `${value.toFixed(1)}s`;
+  const wholeSeconds = Math.floor(value);
+  if (wholeSeconds < 60) {
+    return `${wholeSeconds}s`;
   }
-  if (value < 3600) {
-    const minutes = Math.floor(value / 60);
-    const seconds = value - minutes * 60;
-    return `${minutes}min ${seconds.toFixed(1)}s`;
+  if (wholeSeconds < 3600) {
+    const minutes = Math.floor(wholeSeconds / 60);
+    const seconds = wholeSeconds - minutes * 60;
+    return `${minutes}min ${seconds}s`;
   }
-  const hours = Math.floor(value / 3600);
-  const remainderAfterHours = value - hours * 3600;
+  const hours = Math.floor(wholeSeconds / 3600);
+  const remainderAfterHours = wholeSeconds - hours * 3600;
   const minutes = Math.floor(remainderAfterHours / 60);
   const seconds = remainderAfterHours - minutes * 60;
-  return `${hours}h ${minutes}min ${seconds.toFixed(1)}s`;
+  return `${hours}h ${minutes}min ${seconds}s`;
 }
 
 export default function App() {
